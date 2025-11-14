@@ -1,0 +1,17 @@
+[
+  {
+    "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+    "value": "true",
+    "slotSetting": false
+  },
+  {
+    "name": "SERVICE_BUS_CONNECTION_STRING",
+    "value": "your-azure-service-bus-connection-string-here",
+    "slotSetting": false
+  },
+  {
+    "name": "QUEUE_NAME",
+    "value": "asbqueue",
+    "slotSetting": false
+  }
+]
