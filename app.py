@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
+from azure.identity import DefaultAzureCredential
 import os
 import logging
 from datetime import datetime
@@ -14,17 +15,29 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Azure Service Bus configuration from environment variables - NO HARDCODED SECRETS!
-SERVICE_BUS_CONNECTION_STRING = os.getenv('SERVICE_BUS_CONNECTION_STRING')
+# Azure Service Bus configuration using Managed Identity - ZERO SECRETS! 🔐
+SERVICE_BUS_NAMESPACE = os.getenv('SERVICE_BUS_NAMESPACE')  # e.g., 'your-servicebus-namespace.servicebus.windows.net'
 QUEUE_NAME = os.getenv('QUEUE_NAME', 'asbqueue')
 
 def get_servicebus_client():
-    """Create and return a Service Bus client"""
+    """Create and return a Service Bus client using DefaultAzureCredential (Managed Identity)"""
     try:
-        if not SERVICE_BUS_CONNECTION_STRING:
-            logger.error("SERVICE_BUS_CONNECTION_STRING environment variable is not set")
+        if not SERVICE_BUS_NAMESPACE:
+            logger.error("SERVICE_BUS_NAMESPACE environment variable is not set")
             return None
-        return ServiceBusClient.from_connection_string(SERVICE_BUS_CONNECTION_STRING)
+        
+        # Use DefaultAzureCredential for authentication
+        # This will use:
+        # - Azure CLI credentials for local development
+        # - Managed Identity when deployed to Azure
+        credential = DefaultAzureCredential()
+        
+        # Create Service Bus client with the namespace URL and credential
+        fully_qualified_namespace = SERVICE_BUS_NAMESPACE
+        if not fully_qualified_namespace.endswith('.servicebus.windows.net'):
+            fully_qualified_namespace = f"{SERVICE_BUS_NAMESPACE}.servicebus.windows.net"
+            
+        return ServiceBusClient(fully_qualified_namespace=fully_qualified_namespace, credential=credential)
     except Exception as e:
         logger.error(f"Error creating Service Bus client: {str(e)}")
         return None
@@ -36,7 +49,7 @@ def hello_world():
         return render_template('index.html')
     except Exception as e:
         # Fallback to simple HTML if template is missing
-        connection_status = "✅ Connection string configured" if SERVICE_BUS_CONNECTION_STRING else "❌ Connection string not configured"
+        connection_status = "✅ Managed Identity configured" if SERVICE_BUS_NAMESPACE else "❌ Service Bus namespace not configured"
         return f'''
         <!DOCTYPE html>
         <html>
@@ -56,16 +69,22 @@ def hello_world():
                 <p><strong>Queue:</strong> {QUEUE_NAME}</p>
                 
                 <div style="background: #d4edda; color: #155724; padding: 15px; border-radius: 5px; margin: 15px 0;">
-                    <strong>🔐 Security:</strong> No hardcoded secrets in source code!<br>
-                    Configuration loaded from environment variables.
+                    <strong>🔐 Zero Secrets Architecture:</strong> Uses Azure Managed Identity!<br>
+                    No connection strings or secrets needed - pure Azure authentication.
                 </div>
                 
                 <h3>Configuration Required:</h3>
                 <p>Set these environment variables:</p>
                 <ul>
-                    <li><code>SERVICE_BUS_CONNECTION_STRING</code> - Your Azure Service Bus connection string</li>
+                    <li><code>SERVICE_BUS_NAMESPACE</code> - Your Service Bus namespace (e.g., myapp.servicebus.windows.net)</li>
                     <li><code>QUEUE_NAME</code> - Queue name (default: asbqueue)</li>
                 </ul>
+                
+                <div style="background: #cce5ff; color: #004085; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                    <strong>🔑 Authentication:</strong><br>
+                    • <strong>Local:</strong> Uses Azure CLI credentials (az login)<br>
+                    • <strong>Azure:</strong> Uses Managed Identity automatically
+                </div>
                 
                 <h3>API Endpoints:</h3>
                 <ul>
@@ -179,14 +198,16 @@ def receive_messages():
 @app.route('/health')
 def health_check():
     """Health check endpoint"""
-    config_status = "configured" if SERVICE_BUS_CONNECTION_STRING else "not configured"
+    config_status = "configured" if SERVICE_BUS_NAMESPACE else "not configured"
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
         'python_version': '3.13',
+        'service_bus_namespace': SERVICE_BUS_NAMESPACE,
         'service_bus_queue': QUEUE_NAME,
+        'authentication': 'Azure Managed Identity',
         'connection_status': config_status,
-        'security': 'No hardcoded secrets'
+        'security': 'Zero secrets architecture'
     })
 
 if __name__ == '__main__':
